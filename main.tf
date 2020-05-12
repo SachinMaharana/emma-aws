@@ -111,3 +111,47 @@ resource "aws_nat_gateway" "natgw" {
 }
 
 
+resource "aws_internet_gateway" "igw" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name    = "${var.project}-igw"
+    Project = var.project
+    Owner   = var.owner
+  }
+}
+
+resource "aws_route_table" "rt-public" {
+  vpc_id = aws_vpc.main.id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.igw.id
+  }
+
+  tags = {
+    Name      = "${var.project}-rt-public"
+    Attribute = "public"
+    Project   = var.project
+    Owner     = var.owner
+  }
+}
+
+resource "aws_route_table" "rt-private" {
+  count  = var.availability_zones
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.natgw[count.index].id
+  }
+  tags = {
+    Name      = "${var.project}-rt-private"
+    Attribute = "private"
+    Project   = var.project
+    Owner     = var.owner
+  }
+}
+
+
+
+
