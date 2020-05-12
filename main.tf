@@ -153,5 +153,243 @@ resource "aws_route_table" "rt-private" {
 }
 
 
+resource "aws_route_table_association" "public-rtassoc" {
+  count          = var.availability_zones
+  subnet_id      = element(aws_subnet.public.*.id, count.index)
+  route_table_id = aws_route_table.rt-public.id
+}
+
+resource "aws_route_table_association" "private-rtassoc" {
+  count          = var.availability_zones
+  subnet_id      = element(aws_subnet.private.*.id, count.index)
+  route_table_id = aws_route_table.rt-private[count.index].id
+}
+
+resource "aws_key_pair" "ssh" {
+  count      = var.aws_key_pair_name == null ? 1 : 0
+  key_name   = "${var.owner}-${var.project}"
+  public_key = file(var.ssh_public_key_path)
+}
 
 
+data "aws_iam_policy_document" "ec2_assume_role" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      identifiers = ["ec2.amazonaws.com"]
+      type        = "Service"
+    }
+  }
+}
+
+data "aws_iam_policy_document" "bastion" {
+  statement {
+    sid = "bastion"
+    actions = [
+      "autoscaling:DescribeAutoScalingInstances",
+      "ec2:CreateRoute",
+      "ec2:CreateTags",
+      "ec2:DescribeAutoScalingGroups",
+      "ec2:DescribeInstances",
+      "ec2:DescribeRegions",
+      "ec2:DescribeRouteTables",
+      "ec2:DescribeTags",
+      "elasticloadbalancing:DescribeLoadBalancers",
+      "route53:ListHostedZonesByName"
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid = "route53"
+    actions = [
+      "route53:ChangeResourceRecordSets"
+    ]
+    resources = [
+      "arn:aws:route53:::hostedzone/${data.aws_route53_zone.selected.zone_id}"
+    ]
+  }
+}
+
+resource "aws_iam_role" "bastion" {
+  name_prefix        = "bastion-"
+  assume_role_policy = data.aws_iam_policy_document.ec2_assume_role.json
+
+  tags = {
+    Name    = "${var.project}-bastion"
+    Project = var.project
+    Owner   = var.owner
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_iam_role_policy" "bastion" {
+  name_prefix = "bastion-"
+  role        = aws_iam_role.bastion.id
+  policy      = data.aws_iam_policy_document.bastion.json
+}
+
+resource "aws_iam_instance_profile" "bastion" {
+  name_prefix = "bastion-"
+  role        = aws_iam_role.bastion.name
+}
+
+
+data "aws_iam_policy_document" "etcd_worker_master" {
+  statement {
+    sid = "autoscaling"
+    actions = [
+      "ec2:DescribeAvailabilityZones",
+      "ec2:DescribeInstances",
+      "ec2:DescribeNetworkInterfaces",
+      "ec2:DescribeRegions",
+      "ec2:DescribeRouteTables",
+      "ec2:DescribeTags",
+      "elasticloadbalancing:DescribeLoadBalancers"
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role" "etcd_worker_master" {
+  name_prefix = "etcd-worker-master-"
+
+  assume_role_policy = data.aws_iam_policy_document.ec2_assume_role.json
+
+  tags = {
+    Name    = "${var.project}-etcd-worker-master"
+    Project = var.project
+    Owner   = var.owner
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_iam_role_policy" "etcd_worker_master" {
+  name_prefix = "etcd-worker-master-"
+  role        = aws_iam_role.etcd_worker_master.id
+  policy      = data.aws_iam_policy_document.etcd_worker_master.json
+}
+
+resource "aws_iam_instance_profile" "etcd_worker_master" {
+  name_prefix = "etcd-worker-master-"
+  role        = aws_iam_role.etcd_worker_master.name
+}
+
+
+resource "aws_security_group" "bastion-lb" {
+  name_prefix = "bastion-lb-"
+  description = "Bastion-LB"
+  vpc_id      = aws_vpc.main.id
+
+  tags = {
+    Name    = "${var.project}-bastion-lb"
+    Project = var.project
+    Owner   = var.owner
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_security_group" "master-public-lb" {
+  name_prefix = "master-public-lb-"
+  description = "Master-Public-LB"
+  vpc_id      = aws_vpc.main.id
+
+  tags = {
+    Name    = "${var.project}-master-lb-public"
+    Project = var.project
+    Owner   = var.owner
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_security_group" "master-private-lb" {
+  name_prefix = "master-private-lb-"
+  description = "Master-Private-LB"
+  vpc_id      = aws_vpc.main.id
+
+  tags = {
+    Name    = "${var.project}-master-lb-private"
+    Project = var.project
+    Owner   = var.owner
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_security_group" "bastion" {
+  name_prefix = "bastion-"
+  description = "Bastion"
+  vpc_id      = aws_vpc.main.id
+
+  tags = {
+    Name    = "${var.project}-bastion"
+    Project = var.project
+    Owner   = var.owner
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_security_group" "etcd" {
+  name_prefix = "etcd-"
+  description = "etcd"
+  vpc_id      = aws_vpc.main.id
+
+  tags = {
+    Name    = "${var.project}-etcd"
+    Project = var.project
+    Owner   = var.owner
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_security_group" "master" {
+  name_prefix = "k8s-master-"
+  description = "K8s Master"
+  vpc_id      = aws_vpc.main.id
+
+  tags = {
+    Name    = "${var.project}-k8s-master"
+    Project = var.project
+    Owner   = var.owner
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_security_group" "worker" {
+  name_prefix = "k8s-worker-"
+  description = "K8s Worker"
+  vpc_id      = aws_vpc.main.id
+
+  tags = {
+    Name    = "${var.project}-k8s-worker"
+    Project = var.project
+    Owner   = var.owner
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}

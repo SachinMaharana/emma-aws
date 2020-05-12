@@ -40,3 +40,15 @@ variable "availability_zones" {
   type        = number
   default     = 3
 }
+
+variable "ssh_public_key_path" {
+  description = "SSH public key path (to create a new AWS Key Pair from existing local SSH public RSA key)"
+  type        = string
+  default     = "~/.ssh/id_rsa.pub"
+}
+
+variable "aws_key_pair_name" {
+  description = "AWS Key Pair name to use for EC2 Instances (if already existent)"
+  type        = string
+  default     = null
+}
