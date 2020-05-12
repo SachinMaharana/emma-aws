@@ -86,3 +86,28 @@ resource "aws_subnet" "private" {
     Owner     = var.owner
   }
 }
+
+resource "aws_eip" "nat" {
+  count = var.availability_zones
+  vpc   = true
+
+  tags = {
+    Name    = "${var.project}-eip-natgw-${count.index}"
+    Project = var.project
+    Owner   = var.owner
+  }
+}
+
+resource "aws_nat_gateway" "natgw" {
+  count         = var.availability_zones
+  allocation_id = aws_eip.nat[count.index].id
+  subnet_id     = element(aws_subnet.public.*.id, count.index)
+
+  tags = {
+    Name    = "${var.project}-natgw-${count.index}"
+    Project = var.project
+    Owner   = var.owner
+  }
+}
+
+
