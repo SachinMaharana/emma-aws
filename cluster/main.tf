@@ -6,10 +6,6 @@ data "aws_subnet_ids" "default" {
   vpc_id = data.aws_vpc.default.id
 }
 
-
-
-
-
 resource "aws_lb" "lb" {
   name               = "cluster-lb"
   load_balancer_type = "application"
