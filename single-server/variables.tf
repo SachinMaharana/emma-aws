@@ -9,3 +9,9 @@ variable "aws_profile" {
   description = "AWS Profile to be used"
   default     = "default"
 }
+
+variable "server_port" {
+  type        = number
+  default     = 8080
+  description = "Port the ec2 will listen on"
+}
